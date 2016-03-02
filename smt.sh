@@ -33,6 +33,7 @@ user=`whoami`
  dir_run="/services/sm/Server/RUN/"
  dir_log="/services/logs/"
  dir_larch="/services/logs/arch/"
+ dir_aaname="analyze"
  dir_ports_name="ports"
  #df strings
  dfgl_sm="/services/sm" #hidden from cfgshow
@@ -59,7 +60,7 @@ user=`whoami`
  dlmtrf="-"
 
  #version
- VER="0.9.50"
+ VER="0.9.80"
  
  #tar the archive?
  tar="0"
@@ -129,7 +130,7 @@ user=`whoami`
         echo -e "    \e[1;10m-sp\e[0m {port number}               Start port number"
         echo -e "    \e[1;10m-kp\e[0m {port number}               Kill {port number} port"
         echo -e "    \e[1;10m-pbp\e[0m {PID}                      Port by {PID} process id"
-        echo -e "    \e[1;10m-pu\e[0m                             Ports UP - check if all valid (base on sm.cfg) ports running and show eer ports."        
+        echo -e "    \e[1;10m-pu\e[0m                             Ports UP - check if all valid (base on sm.cfg) ports running and show err ports."        
         echo ""
 	    echo -e "    \e[1;10m-rs\e[0m                             Restart server via smstop -f and start it again with smstart"
         echo -e "    \e[1;10m-ks\e[0m                             Kill server aka smstop -f"
@@ -139,6 +140,9 @@ user=`whoami`
 	    echo -e "    \e[1;10m-logs\e[0m                           Make copy of logs to arch dir and make logs empty + delete errlogs"
         echo -e "    \e[1;10m-los\e[0m                            List size of logs in dir: ${dir_log}"
         echo -e "    \e[1;10m-la\e[0m                             List contents of: ${dir_larch} with sizes"
+        echo -e "    \e[1;10m-zla\e[0m                            Zip archives from list and delete source"
+        #echo -e "    \e[1;10m-aa\e[0m {ZipName}                  Analyse archive {ZipName} - unzip {ZipName} to ${dir_larch}${dir_aaname}/"        
+        echo -e "    \e[1;10m-uza\e[0m {ZipName}                  Unzip archive {ZipName} - unzip {ZipName} to ${dir_larch}${dir_aaname}/"        
         echo -e "    \e[1;10m-gls\e[0m {logname} {string}         Grep from param {logname} param {string} - {logname} is port number or sm"
         echo -e "    \e[1;10m-glu\e[0m {logname} {userlogin}      Grep from param {logname} param {userlogin} - {logname} is port number or sm"
         echo -e "    \e[1;10m-tp\e[0m {port number}               Tail -f on log port number, can tail sm.log if parametr is sm"
@@ -151,7 +155,10 @@ user=`whoami`
         echo ""
         echo ""
         echo ""        
-						
+					#ADD OPTION TO KILL AGENTS PROCCESSES	
+                    #add keytool calls
+                    #add cert expiration check
+
 	}
 
 
@@ -229,13 +236,64 @@ user=`whoami`
             echo "${cmd}"
             nohup ${portfile} 2>&1>/dev/null &		
 
-            echo `sm -reportlbstatus`
+            #echo `sm -reportlbstatus`
 
         else
     	    echo "Process number (${prcsid}) NOT FOUND in lbstatus"
     	    echo "Running check:"
     	    echo `ps ax | grep ${param}`
-            exit
+
+            #``
+            echo -e -n "\e[41mKill proccesses for port \e[0m ${param}: (y/n)?"
+            read -p "" sel
+            case "$sel" in 
+                            y|Y ) 
+                                ppid=( $(ps ax | grep ${param} | grep Sl | awk '{print $1}') ) #port main PID, killing this pid kills port as a whole
+                                if [ "${ppid}" != "" ]
+                                    then
+                                        echo "Process found (${ppid})"
+                                        echo `kill -9 ${ppid}`
+                                        echo "Process ${param} killed successfully"
+                                        #run it now?
+                                        echo -e -n "\e[32mStart port: \e[0m ${param}: (y/n)?"
+                                        read -p "" chos
+                                        case "$chos" in 
+                                                        y|Y ) 
+                                                           sPort 
+                                                        ;;
+                                                        n|N ) 
+                                                        echo "skipping action...."
+                                                        ;;
+                                                        * ) 
+                                                        echo "invalid option"
+                                                        ;;                                        
+                                        esac                                         
+                                    else
+                                        echo "There is no process for port: ${param}"
+                                        echo "Port is not running"
+
+                                        echo -e -n "\e[32mStart port: \e[0m ${param}: (y/n)?"
+                                        read -p "" chos
+                                        case "$chos" in 
+                                                        y|Y ) 
+                                                           sPort 
+                                                        ;;
+                                                        n|N ) 
+                                                        echo "skipping action...."
+                                                        ;;
+                                                        * ) 
+                                                        echo "invalid option"
+                                                        ;;                                        
+                                        esac                                        
+                                fi
+                            ;;
+                            n|N ) 
+                            echo "skipping action...."
+                            ;;
+                            * ) 
+                            echo "invalid option"
+                            ;;                                        
+            esac
         fi
 	   echo ""
 	}
@@ -681,11 +739,12 @@ function makeFooterPUP() {
 divider="=============================="
 divider=$divider$divider$divider
 
-header="\n %-5s %-20s %-12s %7s %7s %7s %9s\n"
-format=" %-5s %-20s %-12s %7s %7s %7s %9s\n"
+header="\n %-5s %-20s %-12s %7s %7s %7s %9s \n"
+format=" %-5s %-20s %-12s %7s %7s %7s %9s \n"
 width=80
+i=0
 
-printf "$header" "TYPE" "NAME" "DATE" "TIME" "MLOG" "PLOG" "TTL"
+printf "$header" "TYPE" "NAME" "DATE" "TIME" "MLOG" "PLOG" "TTL" 
 printf "%$width.${width}s\n" "$divider"
 
 
@@ -694,28 +753,34 @@ printf "%$width.${width}s\n" "$divider"
 
             if [[ -d "${dir_larch}${each}" ]]
                 then
-                    typ="DIR"
-                    date="${each:6:2}.${each:4:2}.${each:0:4}"
-                    name="${each}"
-                    tim="${each:9:2}:${each:11:2}"
-                    psize=( $(ls -lh ${dir_larch}${each}/ | grep ${sml}  | awk '{print $5}') )
-                    ppsize=( $(du -sh "${dir_larch}${each}/${dir_ports_name}" | awk '{print $1}') )
+                    if [[ "${each}" != "${dir_aaname}" ]]; 
+                        then
+                            typ="DIR"
+                            date="${each:6:2}.${each:4:2}.${each:0:4}"
+                            name="${each}"
+                            tim="${each:9:2}:${each:11:2}"
+                            psize=( $(ls -lh ${dir_larch}${each}/ | grep ${sml}  | awk '{print $5}') )
+                            ppsize=( $(du -sh "${dir_larch}${each}/${dir_ports_name}" | awk '{print $1}') )
 
-                    printf "$format" ${typ} ${each} ${date} ${tim} ${psize} ${ppsize} "0"
+                            printf "$format" ${typ} ${each} ${date} ${tim} ${psize} ${ppsize} "0"             #statements
+                    fi
+
 
                     #echo "Archive [${each}] from (date):  ...found ( ${sml}: ${psize} / ports: ${ppsize}) "
 
             elif [[ -f "${dir_larch}${each}" ]]
                 then
-                typ="ZIP"
-                date="${each:6:2}.${each:4:2}.${each:0:4}"
+                    typ="ZIP"
+                    date="${each:6:2}.${each:4:2}.${each:0:4}"
 
-                tim="${each:9:2}:${each:11:2}"
-                name="${each}"                
-                psize=( $(ls -lh ${dir_larch}${each} | grep ${each}  | awk '{print $5}') )
-                #echo "ls -lh ${dir_larch}${each} | grep ${each}  | awk '{print \$5}'"
-                printf "$format" ${typ} ${each} ${date} ${tim}  "0" "0" ${psize}
-               #echo "Archive [${each}] from (date): ${each:6:2}.${each:4:2}.${each:0:4}  ...found ( ${each}: ${psize} ) "
+                    tim="${each:9:2}:${each:11:2}"
+                    name="${each}"                
+                    psize=( $(ls -lh ${dir_larch}${each} | grep ${each}  | awk '{print $5}') )
+                    
+                    #echo "ls -lh ${dir_larch}${each} | grep ${each}  | awk '{print \$5}'"
+                    #printf "$format" ${itxt} ${typ} ${each} ${date} ${tim}  "0" "0" ${psize}
+                    printf "$format" ${typ} ${each} ${date} ${tim}  "0" "0" ${psize} 
+                   #echo "Archive [${each}] from (date): ${each:6:2}.${each:4:2}.${each:0:4}  ...found ( ${each}: ${psize} ) "
             fi           
 
         
@@ -736,7 +801,163 @@ printf "%$width.${width}s\n" "$divider"
 
     }
 
+function lArch () {
+        #only 4096 grep to omit the . .. directories 
+        lsarr=( $(ls ${dir_larch}) )
+        
 
+        echo "Archive contents (${dir_larch}): "
+divider="=============================="
+divider=$divider$divider$divider
+
+header="\n %-5s %-20s %-12s %7s %7s %7s %9s \e[32m%4s\e[0m \n"
+format=" %-5s %-20s %-12s %7s %7s %7s %9s \e[32m%4s\e[0m\n"
+width=76
+i=0
+
+printf "$header" "TYPE" "NAME" "DATE" "TIME" "MLOG" "PLOG" "TTL" "##"
+printf "%$width.${width}s\n" "$divider"
+
+
+        for each in "${lsarr[@]}"
+        do
+
+            if [[ -d "${dir_larch}${each}" ]]
+                then
+                    if [[ "${each}" != "${dir_aaname}" ]]; 
+                        then
+                            typ="DIR"
+                            date="${each:6:2}.${each:4:2}.${each:0:4}"
+                            name="${each}"
+                            tim="${each:9:2}:${each:11:2}"
+                            psize=( $(ls -lh ${dir_larch}${each}/ | grep ${sml}  | awk '{print $5}') )
+                            ppsize=( $(du -sh "${dir_larch}${each}/${dir_ports_name}" | awk '{print $1}') )
+
+                            printf "$format" ${typ} ${each} ${date} ${tim} ${psize} ${ppsize} "0"  "##"             #statements
+                    fi
+
+
+                    #echo "Archive [${each}] from (date):  ...found ( ${sml}: ${psize} / ports: ${ppsize}) "
+
+            elif [[ -f "${dir_larch}${each}" ]]
+                then
+                    typ="ZIP"
+                    date="${each:6:2}.${each:4:2}.${each:0:4}"
+
+                    tim="${each:9:2}:${each:11:2}"
+                    name="${each}"                
+                    psize=( $(ls -lh ${dir_larch}${each} | grep ${each}  | awk '{print $5}') )
+                    itxt=$(printf "%02d" ${i}) #linenumber
+                    #echo "ls -lh ${dir_larch}${each} | grep ${each}  | awk '{print \$5}'"
+                    #printf "$format" ${itxt} ${typ} ${each} ${date} ${tim}  "0" "0" ${psize}
+                    printf "$format" ${typ} ${each} ${date} ${tim}  "0" "0" ${psize} ${i}
+                    ((i=i+1))
+                   #echo "Archive [${each}] from (date): ${each:6:2}.${each:4:2}.${each:0:4}  ...found ( ${each}: ${psize} ) "
+            fi           
+
+        
+
+      
+        done
+        #count it all 
+        
+        size=( $(du -sh "${dir_larch}" | awk '{print $1}') ) #siye of the directory human readable
+        #dflogs=( $(df | grep ${dfgl_log} | awk '{print $4}') ) #return how many percent disk space (from allocated space) logs takes
+        dflogs=( $(df | grep ${dir_log%?} | awk '{print $4}') ) #return how many percent disk space (from allocated space) logs takes
+        
+        
+        printf "%$width.${width}s\n" "$divider"
+        echo -e "TOTAL Archive size: ${size} \t Disk space usage for ${dir_log}:  ${dflogs}"
+        #echo "Disk space usage for ${dir_log}:  ${dflogs}"
+        echo ""
+
+    }    
+
+#smt -zla
+function CompressArchives() {
+
+    listarch=( $(/services/sm/Server/RUN/smt.sh -la | grep DIR | awk '{print $2}') )
+    
+        for each in "${listarch[@]}"
+        do
+
+            if [[ ! -f "${dir_larch}${each}.zip" ]] 
+                then
+              #statements
+                echo -e -n "\e[31mCompress archive\e[0m ${each}: (y/n)?"
+                read -p "" choice
+                case "$choice" in 
+                  y|Y ) 
+                        echo `zip -r -j ${dir_larch}${each}.zip ${dir_larch}${each}`
+                        echo ""
+                        echo -e -n "\e[41mDELETE SOURCE ARCHIVE\e[0m ${each}: (y/n)?"
+                        read -p "" sel
+                        case "$sel" in 
+                                        y|Y ) 
+                                        echo  "rm -rf  ${dir_larch}${each}"
+                                        echo  `rm -rf  ${dir_larch}${each}`
+                                        ;;
+                                        n|N ) 
+                                        echo "skipping archive: ${each}"
+                                        ;;
+                                        * ) 
+                                        echo "invalid option"
+                                        ;;                                        
+                        esac
+                        ;;
+                  n|N ) 
+                        echo "skipping archive: ${each}"
+                        ;;
+                  * ) 
+                        echo "invalid option"
+                        ;;
+                esac
+            else
+                echo "${dir_larch}${each}.zip skipping... file already exists"
+                 echo ""
+                        echo -e -n "\e[41mDELETE SOURCE ARCHIVE\e[0m ${each}: (y/n)?"
+                        read -p "" sel
+                        case "$sel" in 
+                                        y|Y ) 
+                                        echo  "rm -rf  ${dir_larch}${each}"
+                                        echo  `rm -rf  ${dir_larch}${each}`
+                                        ;;
+                                        n|N ) 
+                                        echo "skipping archive: ${each}"
+                                        ;;
+                                        * ) 
+                                        echo "invalid option"
+                                        ;;                                        
+                        esac
+            fi   #[[ ! -f "${dir_larch}${each}.zip" ]]  
+            
+      
+        done    #end loop
+
+}
+
+    function AnalyzeArchive() {
+
+        if [ -d "${dir_larch}${NOW}" ]; 
+           then
+               analyzedir="${dir_larch}${dir_aaname}/"  
+                
+        else
+               mkdir ${dir_larch}${dir_aaname}
+               analyzedir="${dir_larch}${dir_aaname}/"
+               echo -e "${dir_larch}${dir_aaname}/...           \e[34mcreated\e[0m"
+        fi
+        
+        if [[ ! -f "${dir_larch}${param}" ]] 
+            then
+            echo -e "Archive ${param} is not valid Archive name in Archive directory"
+        else
+            echo -e "unZiping archive: ${param} to ${analyzedir}"
+            echo ""
+            echo `unzip ${dir_larch}${param} -d ${analyzedir}`
+        fi
+        echo ""
+    }
 
 LOGO2() {
 cat <<"EOT"
@@ -792,6 +1013,12 @@ EOT
      	elif [ ${command} == "-cfgshow" ];
     	    then
     	        printVars;
+        elif [ ${command} == "-zla" ]
+            then
+            CompressArchives
+        elif [ ${command} == "-aa" -o ${command} == "-uzla" ]
+            then
+            AnalyzeArchive            
     	elif [ ${command} == "-rp" -a ${#} -eq 2 ]
     	    then
     	    echo "SMT ${VER} is attempting to shutdown port: ${param}"        
@@ -800,7 +1027,7 @@ EOT
         elif [ ${command} == "-lb" ] 
             then
             sLBstatus
-    	elif [ ${command} == "-rs" ] #server restart smstop -f
+    	elif [ ${command} == "-rs" ] #server restart 
     	    then
         	echo "Attempting to restart server (with option -f)"
     		rServer
@@ -808,11 +1035,11 @@ EOT
             then
             echo "Attempting to start server"
             sServer   
-        elif [ ${command} == "-ks" ] #server start
+        elif [ ${command} == "-ks" ] 
             then
             echo "Attempting to Shutdown the server (with option -f)"
             kServer
-        elif [ ${command} == "-sch" ] #server start
+        elif [ ${command} == "-sch" ]
             then
             echo "Checking server status"
             sSrvStatus                                    
