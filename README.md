@@ -25,7 +25,7 @@ Helps to operate HP Service Manager server in easy way.
     -uza {ZipName}                  Unzip archive {ZipName} - unzip {ZipName} to CUSTOM/path
     -gls {logname} {string}         Grep from param {logname} param {string} - {logname} is port number or sm
     -glu {logname} {userlogin}      Grep from param {logname} param {userlogin} - {logname} is port number or sm
-    -tp {port number}               Tail -f on log port number, can tail sm.log if parametr is sm
+    -tp {port number}               Tail -f on log port number, can tail sm.log if parameter is sm
     -df                             Disk usage for hpsm user
 
     -v                              Show version of the script
